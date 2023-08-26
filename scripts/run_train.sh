@@ -17,9 +17,9 @@ deepspeed --include localhost:0,1,2,3 --master_port 61000 ./train.py \
   --logging_strategy steps \
   --logging_steps 10 \
   --evaluation_strategy steps \
-  --evaluation_steps 120 \
+  --eval_steps 120 \
   --save_strategy steps \
-  --save_step 120 \
+  --save_steps 120 \
   --save_total_limit 3 \
   --metric_for_best_model eval_accuracy \
   --greater_is_better true \
