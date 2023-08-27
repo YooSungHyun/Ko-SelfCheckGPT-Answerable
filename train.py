@@ -18,6 +18,8 @@ from transformers import (
 from transformers.trainer_utils import EvalPrediction
 from utils import clean_unicode, trim_text
 
+PASSAGE_QUESTION_TOKEN = "[unused0]"
+
 
 def main(parser: HfArgumentParser) -> None:
     train_args, _ = parser.parse_args_into_dataclasses(return_remaining_strings=True)
@@ -30,9 +32,15 @@ def main(parser: HfArgumentParser) -> None:
     model.config.num_labels = 2
 
     klue_datasets = load_dataset("klue", "mrc")
+    raw_train_datasets = load_dataset("json", data_files="./data/train/train_data.json", split="all")
+    raw_valid_datasets = load_dataset("json", data_files="./data/validation/valid_data.json", split="all")
 
-    def klue_preprocess(raw):
-        input_text = clean_unicode(trim_text(raw["context"])) + "[unused0]" + clean_unicode(trim_text(raw["question"]))
+    def preprocess(raw):
+        input_text = (
+            clean_unicode(trim_text(raw["context"]))
+            + PASSAGE_QUESTION_TOKEN
+            + clean_unicode(trim_text(raw["question"]))
+        )
         tokenized_text = tokenizer(input_text, return_token_type_ids=False, return_tensors="pt")
         raw["input_ids"] = tokenized_text["input_ids"][0]
         raw["attention_mask"] = tokenized_text["attention_mask"][0]
@@ -40,7 +48,7 @@ def main(parser: HfArgumentParser) -> None:
 
         return raw
 
-    klue_datasets = klue_datasets.map(klue_preprocess, remove_columns=klue_datasets["train"].column_names)
+    klue_datasets = klue_datasets.map(preprocess, remove_columns=klue_datasets["train"].column_names)
     klue_datasets = klue_datasets.filter(lambda x: len(x["input_ids"]) <= tokenizer.model_max_length)
     true_datasets = klue_datasets.filter(lambda x: x["labels"] == 1)
     false_datasets = klue_datasets.filter(lambda x: x["labels"] == 0)
@@ -50,8 +58,10 @@ def main(parser: HfArgumentParser) -> None:
     train_false_datasets = Dataset.from_dict(false_datasets["train"].shuffle()[:train_sampling_count])
     eval_true_datasets = Dataset.from_dict(true_datasets["validation"].shuffle()[:eval_sampling_count])
     eval_false_datasets = Dataset.from_dict(false_datasets["validation"].shuffle()[:eval_sampling_count])
-    train_datasets = concatenate_datasets([train_true_datasets, train_false_datasets]).shuffle()
-    eval_datasets = concatenate_datasets([eval_true_datasets, eval_false_datasets]).shuffle()
+    raw_train_datasets = raw_train_datasets.map(preprocess, remove_columns=raw_train_datasets.column_names)
+    raw_valid_datasets = raw_valid_datasets.map(preprocess, remove_columns=raw_valid_datasets.column_names)
+    train_datasets = concatenate_datasets([train_true_datasets, train_false_datasets, raw_train_datasets]).shuffle()
+    eval_datasets = concatenate_datasets([eval_true_datasets, eval_false_datasets, raw_valid_datasets]).shuffle()
 
     # [NOTE]: load metrics & set Trainer arguments
     accuracy = load("evaluate-metric/accuracy")
