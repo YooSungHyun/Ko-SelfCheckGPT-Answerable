@@ -163,3 +163,4 @@ DeepSpeed/
 .cache/
 outputs/
 wandb/
+data/
