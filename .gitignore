@@ -164,3 +164,4 @@ DeepSpeed/
 outputs/
 wandb/
 data/
+model/

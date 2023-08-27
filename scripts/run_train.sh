@@ -1,25 +1,25 @@
 export OMP_NUM_THREADS=16
 export WANDB_PROJECT="answerable"
 export WANDB_ENTITY="bart_tadev"
-export WANDB_NAME="roberta-large"
+export WANDB_NAME="[SEP]xlm-longformer"
 export HUGGINGFACE_HUB_CACHE="./.cache"
 export HF_DATASETS_CACHE="./.cache"
 deepspeed --include localhost:0,1,2,3 --master_port 61000 ./train.py \
   --num_train_epochs 30 \
   --do_train \
   --do_eval \
-  --per_device_train_batch_size 64 \
-  --per_device_eval_batch_size 64 \
+  --per_device_train_batch_size 16 \
+  --per_device_eval_batch_size 16 \
   --gradient_accumulation_steps 1 \
   --gradient_checkpointing true \
-  --learning_rate 1e-4 \
-  --warmup_steps 50 \
+  --learning_rate 3e-5 \
+  --warmup_steps 30 \
   --logging_strategy steps \
   --logging_steps 10 \
   --evaluation_strategy steps \
-  --eval_steps 50 \
+  --eval_steps 30 \
   --save_strategy steps \
-  --save_steps 50 \
+  --save_steps 30 \
   --save_total_limit 3 \
   --metric_for_best_model eval_accuracy \
   --greater_is_better true \

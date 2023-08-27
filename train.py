@@ -9,8 +9,8 @@ from setproctitle import setproctitle
 from transformers import (
     DataCollatorWithPadding,
     HfArgumentParser,
-    RobertaForSequenceClassification,
-    RobertaTokenizerFast,
+    AutoModelForSequenceClassification,
+    AutoTokenizer,
     Trainer,
     TrainingArguments,
     set_seed,
@@ -18,7 +18,7 @@ from transformers import (
 from transformers.trainer_utils import EvalPrediction
 from utils import clean_unicode, trim_text
 
-PASSAGE_QUESTION_TOKEN = "[unused0]"
+PASSAGE_QUESTION_TOKEN = "[SEP]"
 
 
 def main(parser: HfArgumentParser) -> None:
@@ -27,13 +27,17 @@ def main(parser: HfArgumentParser) -> None:
     set_seed(train_args.seed)
 
     model_name_or_path = "klue/roberta-large"
-    tokenizer = RobertaTokenizerFast.from_pretrained(model_name_or_path)
-    model = RobertaForSequenceClassification.from_pretrained(model_name_or_path)
+    # model_name_or_path = "monologg/kobigbird-bert-base"
+    # model_name_or_path = "./model/xlm-roberta-longformer-base-16384"
+    model_name_or_path = "./model/xlm-roberta-longformer-large-16384"
+
+    tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, use_fast=True)
+    model = AutoModelForSequenceClassification.from_pretrained(model_name_or_path)
     model.config.num_labels = 2
 
     klue_datasets = load_dataset("klue", "mrc")
-    raw_train_datasets = load_dataset("json", data_files="./data/train/train_data.json", split="all")
-    raw_valid_datasets = load_dataset("json", data_files="./data/validation/valid_data.json", split="all")
+    # raw_train_datasets = load_dataset("json", data_files="./data/train/train_data.json", split="all")
+    # raw_valid_datasets = load_dataset("json", data_files="./data/validation/valid_data.json", split="all")
 
     def preprocess(raw):
         input_text = (
@@ -58,12 +62,14 @@ def main(parser: HfArgumentParser) -> None:
     train_false_datasets = Dataset.from_dict(false_datasets["train"].shuffle()[:train_sampling_count])
     eval_true_datasets = Dataset.from_dict(true_datasets["validation"].shuffle()[:eval_sampling_count])
     eval_false_datasets = Dataset.from_dict(false_datasets["validation"].shuffle()[:eval_sampling_count])
-    raw_train_datasets = raw_train_datasets.map(preprocess, remove_columns=raw_train_datasets.column_names)
-    raw_train_datasets = raw_train_datasets.filter(lambda x: len(x["input_ids"]) <= tokenizer.model_max_length)
-    raw_valid_datasets = raw_valid_datasets.map(preprocess, remove_columns=raw_valid_datasets.column_names)
-    raw_valid_datasets = raw_valid_datasets.filter(lambda x: len(x["input_ids"]) <= tokenizer.model_max_length)
-    train_datasets = concatenate_datasets([train_true_datasets, train_false_datasets, raw_train_datasets]).shuffle()
-    eval_datasets = concatenate_datasets([eval_true_datasets, eval_false_datasets, raw_valid_datasets]).shuffle()
+    # raw_train_datasets = raw_train_datasets.map(preprocess, remove_columns=raw_train_datasets.column_names)
+    # raw_train_datasets = raw_train_datasets.filter(lambda x: len(x["input_ids"]) <= tokenizer.model_max_length)
+    # raw_valid_datasets = raw_valid_datasets.map(preprocess, remove_columns=raw_valid_datasets.column_names)
+    # raw_valid_datasets = raw_valid_datasets.filter(lambda x: len(x["input_ids"]) <= tokenizer.model_max_length)
+    # train_datasets = concatenate_datasets([train_true_datasets, train_false_datasets, raw_train_datasets]).shuffle()
+    # eval_datasets = concatenate_datasets([eval_true_datasets, eval_false_datasets, raw_valid_datasets]).shuffle()
+    train_datasets = concatenate_datasets([train_true_datasets, train_false_datasets]).shuffle()
+    eval_datasets = concatenate_datasets([eval_true_datasets, eval_false_datasets]).shuffle()
 
     # [NOTE]: load metrics & set Trainer arguments
     accuracy = load("evaluate-metric/accuracy")
