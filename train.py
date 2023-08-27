@@ -59,7 +59,9 @@ def main(parser: HfArgumentParser) -> None:
     eval_true_datasets = Dataset.from_dict(true_datasets["validation"].shuffle()[:eval_sampling_count])
     eval_false_datasets = Dataset.from_dict(false_datasets["validation"].shuffle()[:eval_sampling_count])
     raw_train_datasets = raw_train_datasets.map(preprocess, remove_columns=raw_train_datasets.column_names)
+    raw_train_datasets = raw_train_datasets.filter(lambda x: len(x["input_ids"]) <= tokenizer.model_max_length)
     raw_valid_datasets = raw_valid_datasets.map(preprocess, remove_columns=raw_valid_datasets.column_names)
+    raw_valid_datasets = raw_valid_datasets.filter(lambda x: len(x["input_ids"]) <= tokenizer.model_max_length)
     train_datasets = concatenate_datasets([train_true_datasets, train_false_datasets, raw_train_datasets]).shuffle()
     eval_datasets = concatenate_datasets([eval_true_datasets, eval_false_datasets, raw_valid_datasets]).shuffle()
 
