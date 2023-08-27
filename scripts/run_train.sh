@@ -1,7 +1,7 @@
 export OMP_NUM_THREADS=16
 export WANDB_PROJECT="answerable"
 export WANDB_ENTITY="bart_tadev"
-export WANDB_NAME="[SEP]xlm-longformer"
+export WANDB_NAME="[SEP]bigbird-base"
 export HUGGINGFACE_HUB_CACHE="./.cache"
 export HF_DATASETS_CACHE="./.cache"
 deepspeed --include localhost:0,1,2,3 --master_port 61000 ./train.py \
@@ -25,8 +25,9 @@ deepspeed --include localhost:0,1,2,3 --master_port 61000 ./train.py \
   --greater_is_better true \
   --seed 42 \
   --preprocessing_num_workers 16 \
-  --fp16 \
+  --fp32 \
   --group_by_length \
   --output_dir ./outputs/ \
+  --run_name bart-bigbird \
   --report_to wandb \
   --deepspeed ./ds_config/zero3.json
