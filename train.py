@@ -24,6 +24,38 @@ def main(parser: HfArgumentParser) -> None:
     setproctitle(train_args.run_name)
     set_seed(train_args.seed)
 
+    model_name_or_path = "klue/roberta-large"
+    tokenizer = RobertaTokenizerFast.from_pretrained(model_name_or_path)
+    model = RobertaForSequenceClassification.from_pretrained(model_name_or_path)
+    model.config.num_labels = 2
+
+    klue_datasets = load_dataset("klue", "mrc")
+
+    def klue_preprocess(raw):
+        input_text = clean_unicode(trim_text(raw["context"])) + "[unused0]" + clean_unicode(trim_text(raw["question"]))
+        tokenized_text = tokenizer(input_text, return_token_type_ids=False, return_tensors="pt")
+        raw["input_ids"] = tokenized_text["input_ids"][0]
+        raw["attention_mask"] = tokenized_text["attention_mask"][0]
+        raw["labels"] = int(raw["is_impossible"])
+
+        return raw
+
+    klue_datasets = klue_datasets.map(klue_preprocess, remove_columns=klue_datasets["train"].column_names)
+    klue_datasets = klue_datasets.filter(lambda x: len(x["input_ids"]) <= tokenizer.model_max_length)
+    true_datasets = klue_datasets.filter(lambda x: x["labels"] == 1)
+    false_datasets = klue_datasets.filter(lambda x: x["labels"] == 0)
+    train_sampling_count = min(len(true_datasets["train"]), len(false_datasets["train"]))
+    eval_sampling_count = min(len(true_datasets["validation"]), len(false_datasets["validation"]))
+    train_true_datasets = Dataset.from_dict(true_datasets["train"].shuffle()[:train_sampling_count])
+    train_false_datasets = Dataset.from_dict(false_datasets["train"].shuffle()[:train_sampling_count])
+    eval_true_datasets = Dataset.from_dict(true_datasets["validation"].shuffle()[:eval_sampling_count])
+    eval_false_datasets = Dataset.from_dict(false_datasets["validation"].shuffle()[:eval_sampling_count])
+    train_datasets = concatenate_datasets([train_true_datasets, train_false_datasets]).shuffle()
+    eval_datasets = concatenate_datasets([eval_true_datasets, eval_false_datasets]).shuffle()
+
+    # [NOTE]: load metrics & set Trainer arguments
+    accuracy = load("evaluate-metric/accuracy")
+
     def metrics(evaluation_result: EvalPrediction) -> Dict[str, float]:
         """_metrics_
             evaluation과정에서 모델의 성능을 측정하기 위한 metric을 수행하는 함수 입니다.
@@ -49,38 +81,6 @@ def main(parser: HfArgumentParser) -> None:
 
         metrics_result["accuracy"] = accuracy_result["accuracy"]
         return metrics_result
-
-    model_name_or_path = "klue/roberta-large"
-    tokenizer = RobertaTokenizerFast.from_pretrained(model_name_or_path)
-    model = RobertaForSequenceClassification.from_pretrained(model_name_or_path)
-    model.config.num_labels = 2
-
-    klue_datasets = load_dataset("klue", "mrc")
-
-    def klue_preprocess(raw):
-        input_text = clean_unicode(trim_text(raw["context"])) + "[unused0]" + clean_unicode(trim_text(raw["question"]))
-        tokenized_text = tokenizer(input_text, return_token_type_ids=False, return_tensors="pt")
-        raw["input_ids"] = tokenized_text["input_ids"][0]
-        raw["attention_mask"] = tokenized_text["attention_mask"][0]
-        raw["labels"] = int(raw["is_impossible"])
-
-        return raw
-
-    klue_datasets = klue_datasets.map(klue_preprocess, remove_columns=klue_datasets["train"].column_names)
-    klue_datasets = klue_datasets.filter(lambda x: len(x["input_ids"]) <= tokenizer.model_max_length)
-    true_datasets = klue_datasets.filter(lambda x: x["labels"] == 0)
-    false_datasets = klue_datasets.filter(lambda x: x["labels"] == 1)
-    train_sampling_count = max(len(true_datasets["train"]), len(false_datasets["train"]))
-    eval_sampling_count = max(len(true_datasets["validation"]), len(false_datasets["validation"]))
-    train_true_datasets = Dataset.from_dict(true_datasets["train"].shuffle()[:train_sampling_count])
-    train_false_datasets = Dataset.from_dict(false_datasets["train"].shuffle()[:train_sampling_count])
-    eval_true_datasets = Dataset.from_dict(true_datasets["train"].shuffle()[:eval_sampling_count])
-    eval_false_datasets = Dataset.from_dict(false_datasets["train"].shuffle()[:eval_sampling_count])
-    train_datasets = concatenate_datasets([train_true_datasets, train_false_datasets]).shuffle()
-    eval_datasets = concatenate_datasets([eval_true_datasets, eval_false_datasets]).shuffle()
-
-    # [NOTE]: load metrics & set Trainer arguments
-    accuracy = load("evaluate-metric/accuracy")
 
     collator = DataCollatorWithPadding(tokenizer=tokenizer, padding="longest")
 

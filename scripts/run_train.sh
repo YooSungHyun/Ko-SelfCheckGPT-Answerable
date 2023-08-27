@@ -12,14 +12,14 @@ deepspeed --include localhost:0,1,2,3 --master_port 61000 ./train.py \
   --per_device_eval_batch_size 64 \
   --gradient_accumulation_steps 1 \
   --gradient_checkpointing true \
-  --learning_rate 5e-4 \
-  --warmup_steps 150 \
+  --learning_rate 1e-4 \
+  --warmup_steps 50 \
   --logging_strategy steps \
   --logging_steps 10 \
   --evaluation_strategy steps \
-  --eval_steps 120 \
+  --eval_steps 50 \
   --save_strategy steps \
-  --save_steps 120 \
+  --save_steps 50 \
   --save_total_limit 3 \
   --metric_for_best_model eval_accuracy \
   --greater_is_better true \
