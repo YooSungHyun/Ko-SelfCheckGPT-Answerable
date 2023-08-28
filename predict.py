@@ -131,8 +131,9 @@ def predict(trainer: Trainer, test_data: Dataset) -> None:
     output = trainer.predict(test_data)
 
     softmax: np.ndarray = lambda x: np.exp(x) / np.sum(np.exp(x))  # NOTE: 1차원 softmax
-    predictions = output.predictions.apply(softmax)  # 그렇기 때문에 apply를 이용해 각 열에 적용시켜야 함.
-    bool_pred = predictions.argmax(-1).as_type(bool)
+    predictions = np.apply_along_axis(softmax, 1, output.predictions)
+    # 그렇기 때문에 apply를 이용해 각 열에 적용시켜야 함.
+    bool_pred = predictions.argmax(-1).astype(bool)
 
     test_data = test_data.remove_columns(["is_impossible", "input_ids", "attention_mask"])
 
