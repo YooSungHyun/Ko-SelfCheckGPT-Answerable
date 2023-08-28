@@ -1,2 +1,2 @@
 from arguments import PredictArguments
-from utils import remove_attrs, trim_text
+from utils import clean_unicode, trim_text
