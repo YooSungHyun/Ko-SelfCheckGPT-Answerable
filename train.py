@@ -23,7 +23,7 @@ PASSAGE_QUESTION_TOKEN = "[SEP]"
 
 def main(parser: HfArgumentParser) -> None:
     train_args, _ = parser.parse_args_into_dataclasses(return_remaining_strings=True)
-    setproctitle(train_args.run_name)
+    setproctitle("bart-answerable")
     set_seed(train_args.seed)
 
     # model_name_or_path = "klue/roberta-large"
@@ -52,24 +52,36 @@ def main(parser: HfArgumentParser) -> None:
 
         return raw
 
+    def filter_and_min_sample(datasets: Dataset, is_split_all: bool = False):
+        datasets = datasets.filter(lambda x: len(x["input_ids"]) <= tokenizer.model_max_length)
+        true_datasets = datasets.filter(lambda x: x["labels"] == 1)
+        false_datasets = datasets.filter(lambda x: x["labels"] == 0)
+        result_dict = dict()
+        if is_split_all:
+            sampling_count = min(len(true_datasets), len(false_datasets))
+            true_datasets = Dataset.from_dict(true_datasets.shuffle()[:sampling_count])
+            false_datasets = Dataset.from_dict(false_datasets.shuffle()[:sampling_count])
+            result_dict["all"] = concatenate_datasets([true_datasets, false_datasets])
+            assert result_dict["all"] % 2 == 0, "`split=all` sampling error check plz"
+        else:
+            for datasets_split_name in datasets.keys():
+                sampling_count = min(len(true_datasets[datasets_split_name]), len(false_datasets[datasets_split_name]))
+                true_datasets = Dataset.from_dict(true_datasets[datasets_split_name].shuffle()[:sampling_count])
+                false_datasets = Dataset.from_dict(false_datasets[datasets_split_name].shuffle()[:sampling_count])
+                result_dict[datasets_split_name] = concatenate_datasets([true_datasets, false_datasets])
+                assert (
+                    result_dict[datasets_split_name] % 2 == 0
+                ), f"`split={datasets_split_name}` sampling error check plz"
+        return result_dict
+
     klue_datasets = klue_datasets.map(preprocess, remove_columns=klue_datasets["train"].column_names)
-    klue_datasets = klue_datasets.filter(lambda x: len(x["input_ids"]) <= tokenizer.model_max_length)
-    true_datasets = klue_datasets.filter(lambda x: x["labels"] == 1)
-    false_datasets = klue_datasets.filter(lambda x: x["labels"] == 0)
-    train_sampling_count = min(len(true_datasets["train"]), len(false_datasets["train"]))
-    eval_sampling_count = min(len(true_datasets["validation"]), len(false_datasets["validation"]))
-    train_true_datasets = Dataset.from_dict(true_datasets["train"].shuffle()[:train_sampling_count])
-    train_false_datasets = Dataset.from_dict(false_datasets["train"].shuffle()[:train_sampling_count])
-    eval_true_datasets = Dataset.from_dict(true_datasets["validation"].shuffle()[:eval_sampling_count])
-    eval_false_datasets = Dataset.from_dict(false_datasets["validation"].shuffle()[:eval_sampling_count])
     raw_train_datasets = raw_train_datasets.map(preprocess, remove_columns=raw_train_datasets.column_names)
-    raw_train_datasets = raw_train_datasets.filter(lambda x: len(x["input_ids"]) <= tokenizer.model_max_length)
     raw_valid_datasets = raw_valid_datasets.map(preprocess, remove_columns=raw_valid_datasets.column_names)
-    raw_valid_datasets = raw_valid_datasets.filter(lambda x: len(x["input_ids"]) <= tokenizer.model_max_length)
-    train_datasets = concatenate_datasets([train_true_datasets, train_false_datasets, raw_train_datasets]).shuffle()
-    eval_datasets = concatenate_datasets([eval_true_datasets, eval_false_datasets, raw_valid_datasets]).shuffle()
-    # train_datasets = concatenate_datasets([train_true_datasets, train_false_datasets]).shuffle()
-    # eval_datasets = concatenate_datasets([eval_true_datasets, eval_false_datasets]).shuffle()
+    klue_result = filter_and_min_sample(klue_datasets, is_split_all=False)
+    raw_train_result = filter_and_min_sample(raw_train_datasets, is_split_all=True)
+    raw_valid_result = filter_and_min_sample(raw_valid_datasets, is_split_all=True)
+    train_datasets = concatenate_datasets([klue_result["train"], raw_train_result["all"]]).shuffle()
+    eval_datasets = concatenate_datasets([klue_result["validation"], raw_valid_result["all"]]).shuffle()
 
     # [NOTE]: load metrics & set Trainer arguments
     accuracy = load("evaluate-metric/accuracy")

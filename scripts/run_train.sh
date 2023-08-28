@@ -8,18 +8,18 @@ deepspeed --include localhost:0,1,2,3 --master_port 61000 ./train.py \
   --num_train_epochs 30 \
   --do_train \
   --do_eval \
-  --per_device_train_batch_size 16 \
-  --per_device_eval_batch_size 16 \
-  --gradient_accumulation_steps 1 \
+  --per_device_train_batch_size 4 \
+  --per_device_eval_batch_size 4 \
+  --gradient_accumulation_steps 4 \
   --gradient_checkpointing true \
   --learning_rate 3e-5 \
-  --warmup_steps 30 \
+  --warmup_steps 500 \
   --logging_strategy steps \
-  --logging_steps 10 \
+  --logging_steps 30 \
   --evaluation_strategy steps \
-  --eval_steps 30 \
+  --eval_steps 120 \
   --save_strategy steps \
-  --save_steps 30 \
+  --save_steps 120 \
   --save_total_limit 3 \
   --metric_for_best_model eval_accuracy \
   --greater_is_better true \
@@ -28,6 +28,5 @@ deepspeed --include localhost:0,1,2,3 --master_port 61000 ./train.py \
   --fp32 \
   --group_by_length \
   --output_dir ./outputs/ \
-  --run_name bart-bigbird \
   --report_to wandb \
   --deepspeed ./ds_config/zero3.json

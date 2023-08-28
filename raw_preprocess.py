@@ -94,3 +94,21 @@ if not os.path.exists(os.path.join(valid_dir, valid_output)):
     dict_data = pd_to_list_dict(valid_list)
     with open(os.path.join(valid_dir, valid_output), "w", encoding="utf-8") as file:
         file.write(json.dumps(dict_data, indent=4))
+
+
+TEST_DATASETS_TEMPLATES_01 = [
+    ".json",
+    ".json",
+    ".json",
+]
+
+print("@@@@@@@@@@ test raw preprocess @@@@@@@@@@")
+test_dir = "./data/test"
+test_output = "test_data.json"
+if not os.path.exists(os.path.join(test_dir, test_output)):
+    test_list = []
+
+    raw_preprocess(TEST_DATASETS_TEMPLATES_01, test_dir, test_list, is_impossible_in_raw=True)
+    dict_data = pd_to_list_dict(test_list)
+    with open(os.path.join(test_dir, test_output), "w", encoding="utf-8") as file:
+        file.write(json.dumps(dict_data, indent=4))
