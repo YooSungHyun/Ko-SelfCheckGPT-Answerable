@@ -24,7 +24,6 @@ PASSAGE_QUESTION_TOKEN = "[SEP]"
 os.environ["TORCHDYNAMO_DISABLE"] = "1"
 
 
-@dataclass
 class PredictArguments(TrainingArguments):
     model_name_or_path: str = field(
         default=None,
