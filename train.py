@@ -27,12 +27,12 @@ def main(parser: HfArgumentParser) -> None:
     set_seed(train_args.seed)
 
     # model_name_or_path = "klue/roberta-large"
-    # model_name_or_path = "monologg/kobigbird-bert-base"
-    # model_name_or_path = "./model/xlm-roberta-longformer-base-16384"
-    model_name_or_path = "./model/xlm-roberta-longformer-large-16384"
+    model_name_or_path = "monologg/kobigbird-bert-base"
+    model = AutoModelForSequenceClassification.from_pretrained(model_name_or_path, attention_type="original_full")
+    # model_name_or_path = "./model/xlm-roberta-longformer-large-16384"
 
     tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, use_fast=True)
-    model = AutoModelForSequenceClassification.from_pretrained(model_name_or_path)
+    # model = AutoModelForSequenceClassification.from_pretrained(model_name_or_path)
     model.config.num_labels = 2
 
     klue_datasets = load_dataset("klue", "mrc")
@@ -40,11 +40,7 @@ def main(parser: HfArgumentParser) -> None:
     raw_valid_datasets = load_dataset("json", data_files="./data/validation/valid_data.json", split="all")
 
     def preprocess(raw):
-        input_text = (
-            clean_unicode(trim_text(raw["context"]))
-            + PASSAGE_QUESTION_TOKEN
-            + clean_unicode(trim_text(raw["question"]))
-        )
+        input_text = raw["question"] + PASSAGE_QUESTION_TOKEN + raw["title"] + PASSAGE_QUESTION_TOKEN + raw["context"]
         tokenized_text = tokenizer(input_text, return_token_type_ids=False, return_tensors="pt")
         raw["input_ids"] = tokenized_text["input_ids"][0]
         raw["attention_mask"] = tokenized_text["attention_mask"][0]
