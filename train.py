@@ -27,12 +27,12 @@ def main(parser: HfArgumentParser) -> None:
     set_seed(train_args.seed)
 
     # model_name_or_path = "klue/roberta-large"
-    model_name_or_path = "monologg/kobigbird-bert-base"
-    model = AutoModelForSequenceClassification.from_pretrained(model_name_or_path, attention_type="original_full")
-    # model_name_or_path = "./model/xlm-roberta-longformer-large-16384"
+    # model_name_or_path = "monologg/kobigbird-bert-base"
+    # model_name_or_path = "./model/xlm-roberta-longformer-base-16384"
+    model_name_or_path = "./model/xlm-roberta-longformer-large-16384"
 
     tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, use_fast=True)
-    # model = AutoModelForSequenceClassification.from_pretrained(model_name_or_path)
+    model = AutoModelForSequenceClassification.from_pretrained(model_name_or_path)
     model.config.num_labels = 2
 
     klue_datasets = load_dataset("klue", "mrc")
@@ -59,18 +59,18 @@ def main(parser: HfArgumentParser) -> None:
         result_dict = dict()
         if is_split_all:
             sampling_count = min(len(true_datasets), len(false_datasets))
-            true_datasets = Dataset.from_dict(true_datasets.shuffle()[:sampling_count])
-            false_datasets = Dataset.from_dict(false_datasets.shuffle()[:sampling_count])
-            result_dict["all"] = concatenate_datasets([true_datasets, false_datasets])
-            assert result_dict["all"] % 2 == 0, "`split=all` sampling error check plz"
+            sampling_true = Dataset.from_dict(true_datasets.shuffle()[:sampling_count])
+            sampling_false = Dataset.from_dict(false_datasets.shuffle()[:sampling_count])
+            result_dict["all"] = concatenate_datasets([sampling_true, sampling_false])
+            assert len(result_dict["all"]) % 2 == 0, "`split=all` sampling error check plz"
         else:
             for datasets_split_name in datasets.keys():
                 sampling_count = min(len(true_datasets[datasets_split_name]), len(false_datasets[datasets_split_name]))
-                true_datasets = Dataset.from_dict(true_datasets[datasets_split_name].shuffle()[:sampling_count])
-                false_datasets = Dataset.from_dict(false_datasets[datasets_split_name].shuffle()[:sampling_count])
-                result_dict[datasets_split_name] = concatenate_datasets([true_datasets, false_datasets])
+                sampling_true = Dataset.from_dict(true_datasets[datasets_split_name].shuffle()[:sampling_count])
+                sampling_false = Dataset.from_dict(false_datasets[datasets_split_name].shuffle()[:sampling_count])
+                result_dict[datasets_split_name] = concatenate_datasets([sampling_true, sampling_false])
                 assert (
-                    result_dict[datasets_split_name] % 2 == 0
+                    len(result_dict[datasets_split_name]) % 2 == 0
                 ), f"`split={datasets_split_name}` sampling error check plz"
         return result_dict
 
