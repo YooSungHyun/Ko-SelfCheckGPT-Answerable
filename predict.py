@@ -1,7 +1,7 @@
 # for type annotation
 import os
 from dataclasses import dataclass, field
-from typing import Dict, Literal
+from typing import Dict, Literal, Optional
 
 import numpy as np
 import torch
@@ -24,25 +24,23 @@ PASSAGE_QUESTION_TOKEN = "[SEP]"
 os.environ["TORCHDYNAMO_DISABLE"] = "1"
 
 
+@dataclass
 class PredictArguments(TrainingArguments):
-    model_name_or_path: str = field(
+    model_name_or_path: Optional[str] = field(
         default=None,
         metadata={"help": "predict에 사용할 모델의 이름 혹은 폴더 경로"},
     )
-    data_file_path: str = field(
+    data_file_path: Optional[str] = field(
+        default=None,
         metadata={"help": "predict을 수행할 데이터 파일의 경로"},
     )
     data_fils_ext: Literal["json", "csv", "parquet", "text"] = field(
         default="json",
         metadata={"help": "불러들일 파일의 확장자"},
     )
-    save_dir: str = field(
-        default="predict의 결과물을 저장할 폴더의 경로",
-        metadata={"help": ""},
-    )
-    output_dir: str = field(
-        default="./",
-        metadata={"help": "The output directory where the model predictions and checkpoints will be written."},
+    num_proc: int = field(
+        default=4,
+        metadata={"help": "전처리에 사용할 프로세서의 개수"},
     )
 
 
@@ -92,17 +90,26 @@ def main(parser: HfArgumentParser) -> None:
             assert len(result_dict["all"]) % 2 == 0, "`split=all` sampling error check plz"
         else:
             for datasets_split_name in datasets.keys():
-                sampling_count = min(len(true_datasets[datasets_split_name]), len(false_datasets[datasets_split_name]))
-                sampling_true = Dataset.from_dict(true_datasets[datasets_split_name].shuffle()[:sampling_count])
-                sampling_false = Dataset.from_dict(false_datasets[datasets_split_name].shuffle()[:sampling_count])
-                result_dict[datasets_split_name] = concatenate_datasets([sampling_true, sampling_false])
+                sampling_count = min(
+                    len(true_datasets[datasets_split_name]),
+                    len(false_datasets[datasets_split_name]),
+                )
+                sampling_true = Dataset.from_dict(
+                    true_datasets[datasets_split_name].shuffle()[:sampling_count]
+                )
+                sampling_false = Dataset.from_dict(
+                    false_datasets[datasets_split_name].shuffle()[:sampling_count]
+                )
+                result_dict[datasets_split_name] = concatenate_datasets(
+                    [sampling_true, sampling_false]
+                )
                 assert (
                     len(result_dict[datasets_split_name]) % 2 == 0
                 ), f"`split={datasets_split_name}` sampling error check plz"
         return result_dict
 
     with predict_args.main_process_first():
-        raw_test_datasets = raw_test_datasets.map(preprocess, num_proc=4)
+        raw_test_datasets = raw_test_datasets.map(preprocess, num_proc=predict_args.num_proc)
         raw_test_result = filter_and_min_sample(raw_test_datasets, is_split_all=True)
         test_datasets = raw_test_result["all"]
 
@@ -155,7 +162,7 @@ def main(parser: HfArgumentParser) -> None:
         data_collator=collator,
     )
 
-    predict(trainer, test_datasets, tokenizer)
+    predict(trainer, test_datasets)
 
 
 @torch.no_grad()
@@ -183,10 +190,10 @@ def predict(trainer: Trainer, test_data: Dataset) -> None:
     test_data = test_data.add_column(name="impossible_prob", column=predictions[:, 0])
     test_data = test_data.add_column(name="possible_prob", column=predictions[:, 1])
 
-    save_path = os.path.join(trainer.args.save_dir, "predict_result.json")
+    save_path = os.path.join(trainer.args.output_dir, "1-predict_result.json")
     test_data.to_json(save_path, force_ascii=False)
 
-    save_path = os.path.join(trainer.args.save_dir, "predict_result.csv")
+    save_path = os.path.join(trainer.args.output_dir, "1-predict_result.csv")
     df_data = test_data.to_pandas()
     df_data.to_csv(save_path)
 
