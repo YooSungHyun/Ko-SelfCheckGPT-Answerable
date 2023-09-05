@@ -34,11 +34,11 @@ class PredictArguments(TrainingArguments):
         default=None,
         metadata={"help": "predict을 수행할 데이터 파일의 경로"},
     )
-    data_fils_ext: Literal["json", "csv", "parquet", "text"] = field(
+    data_fils_ext: Optional[Literal["json", "csv", "parquet", "text"]] = field(
         default="json",
         metadata={"help": "불러들일 파일의 확장자"},
     )
-    num_proc: int = field(
+    num_proc: Optional[int] = field(
         default=4,
         metadata={"help": "전처리에 사용할 프로세서의 개수"},
     )
