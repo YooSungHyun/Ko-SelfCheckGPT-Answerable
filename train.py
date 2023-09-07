@@ -48,20 +48,34 @@ def main(parser: HfArgumentParser) -> None:
 
         return raw
 
-    def filter_and_min_sample(datasets: Dataset, is_split_all: bool = False):
-        datasets = datasets.filter(lambda x: len(x["input_ids"]) <= tokenizer.model_max_length)
+    def filter_and_min_sample(
+        datasets: Dataset, max_length: int = 512, is_split_all: bool = False, min_sample_count: dict[str, int] = None
+    ):
+        datasets = datasets.filter(lambda x: len(x["input_ids"]) <= max_length)
         true_datasets = datasets.filter(lambda x: x["labels"] == 1)
         false_datasets = datasets.filter(lambda x: x["labels"] == 0)
         result_dict = dict()
         if is_split_all:
-            sampling_count = min(len(true_datasets), len(false_datasets))
+            if min_sample_count:
+                sampling_count = min(len(true_datasets), len(false_datasets), min_sample_count["all"])
+            else:
+                sampling_count = min(len(true_datasets), len(false_datasets))
             sampling_true = Dataset.from_dict(true_datasets.shuffle()[:sampling_count])
             sampling_false = Dataset.from_dict(false_datasets.shuffle()[:sampling_count])
             result_dict["all"] = concatenate_datasets([sampling_true, sampling_false])
             assert len(result_dict["all"]) % 2 == 0, "`split=all` sampling error check plz"
         else:
             for datasets_split_name in datasets.keys():
-                sampling_count = min(len(true_datasets[datasets_split_name]), len(false_datasets[datasets_split_name]))
+                if min_sample_count and datasets_split_name in min_sample_count.keys():
+                    sampling_count = min(
+                        len(true_datasets[datasets_split_name]),
+                        len(false_datasets[datasets_split_name]),
+                        min_sample_count[datasets_split_name],
+                    )
+                else:
+                    sampling_count = min(
+                        len(true_datasets[datasets_split_name]), len(false_datasets[datasets_split_name])
+                    )
                 sampling_true = Dataset.from_dict(true_datasets[datasets_split_name].shuffle()[:sampling_count])
                 sampling_false = Dataset.from_dict(false_datasets[datasets_split_name].shuffle()[:sampling_count])
                 result_dict[datasets_split_name] = concatenate_datasets([sampling_true, sampling_false])
@@ -73,9 +87,17 @@ def main(parser: HfArgumentParser) -> None:
     klue_datasets = klue_datasets.map(preprocess, remove_columns=klue_datasets["train"].column_names)
     raw_train_datasets = raw_train_datasets.map(preprocess, remove_columns=raw_train_datasets.column_names)
     raw_valid_datasets = raw_valid_datasets.map(preprocess, remove_columns=raw_valid_datasets.column_names)
-    klue_result = filter_and_min_sample(klue_datasets, is_split_all=False)
-    raw_train_result = filter_and_min_sample(raw_train_datasets, is_split_all=True)
-    raw_valid_result = filter_and_min_sample(raw_valid_datasets, is_split_all=True)
+    # Klue에서 True 500개, False 500개 1000개 샘플링 (valid는 10000개로 하기 위함)
+    # Evaluation에서 GPU 메모리가 터지고, 학습이 너무 느려서 추가 처리 진행
+    klue_result = filter_and_min_sample(
+        klue_datasets, tokenizer.model_max_length, is_split_all=False, min_sample_count={"validation": 500}
+    )
+    # 4050?? BigBirdEncoder
+    raw_train_result = filter_and_min_sample(raw_train_datasets, tokenizer.model_max_length, is_split_all=True)
+    # 공개 데이터셋에서 True 4500, False 4500 9000개 샘플링 (valid는 10000개로 하기 위함)
+    raw_valid_result = filter_and_min_sample(
+        raw_valid_datasets, tokenizer.model_max_length, is_split_all=True, min_sample_count={"all": 4500}
+    )
     train_datasets = concatenate_datasets([klue_result["train"], raw_train_result["all"]]).shuffle()
     eval_datasets = concatenate_datasets([klue_result["validation"], raw_valid_result["all"]]).shuffle()
 

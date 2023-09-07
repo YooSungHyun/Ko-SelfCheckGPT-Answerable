@@ -63,11 +63,7 @@ def main(parser: HfArgumentParser) -> None:
     )
 
     def preprocess(raw):
-        input_text = (
-            clean_unicode(trim_text(raw["context"]))
-            + PASSAGE_QUESTION_TOKEN
-            + clean_unicode(trim_text(raw["question"]))
-        )
+        input_text = raw["question"] + PASSAGE_QUESTION_TOKEN + raw["title"] + PASSAGE_QUESTION_TOKEN + raw["context"]
         tokenized_text = tokenizer(input_text, return_token_type_ids=False, return_tensors="pt")
         raw["input_ids"] = tokenized_text["input_ids"][0]
         raw["attention_mask"] = tokenized_text["attention_mask"][0]
@@ -77,32 +73,37 @@ def main(parser: HfArgumentParser) -> None:
 
         return raw
 
-    def filter_and_min_sample(datasets: Dataset, is_split_all: bool = False):
-        datasets = datasets.filter(lambda x: len(x["input_ids"]) <= tokenizer.model_max_length)
+    def filter_and_min_sample(
+        datasets: Dataset, max_length: int = 512, is_split_all: bool = False, min_sample_count: dict[str, int] = None
+    ):
+        datasets = datasets.filter(lambda x: len(x["input_ids"]) <= max_length)
         true_datasets = datasets.filter(lambda x: x["labels"] == 1)
         false_datasets = datasets.filter(lambda x: x["labels"] == 0)
         result_dict = dict()
         if is_split_all:
-            sampling_count = min(len(true_datasets), len(false_datasets))
+            if min_sample_count:
+                sampling_count = min(len(true_datasets), len(false_datasets), min_sample_count["all"])
+            else:
+                sampling_count = min(len(true_datasets), len(false_datasets))
             sampling_true = Dataset.from_dict(true_datasets.shuffle()[:sampling_count])
             sampling_false = Dataset.from_dict(false_datasets.shuffle()[:sampling_count])
             result_dict["all"] = concatenate_datasets([sampling_true, sampling_false])
             assert len(result_dict["all"]) % 2 == 0, "`split=all` sampling error check plz"
         else:
             for datasets_split_name in datasets.keys():
-                sampling_count = min(
-                    len(true_datasets[datasets_split_name]),
-                    len(false_datasets[datasets_split_name]),
-                )
-                sampling_true = Dataset.from_dict(
-                    true_datasets[datasets_split_name].shuffle()[:sampling_count]
-                )
-                sampling_false = Dataset.from_dict(
-                    false_datasets[datasets_split_name].shuffle()[:sampling_count]
-                )
-                result_dict[datasets_split_name] = concatenate_datasets(
-                    [sampling_true, sampling_false]
-                )
+                if min_sample_count and datasets_split_name in min_sample_count.keys():
+                    sampling_count = min(
+                        len(true_datasets[datasets_split_name]),
+                        len(false_datasets[datasets_split_name]),
+                        min_sample_count[datasets_split_name],
+                    )
+                else:
+                    sampling_count = min(
+                        len(true_datasets[datasets_split_name]), len(false_datasets[datasets_split_name])
+                    )
+                sampling_true = Dataset.from_dict(true_datasets[datasets_split_name].shuffle()[:sampling_count])
+                sampling_false = Dataset.from_dict(false_datasets[datasets_split_name].shuffle()[:sampling_count])
+                result_dict[datasets_split_name] = concatenate_datasets([sampling_true, sampling_false])
                 assert (
                     len(result_dict[datasets_split_name]) % 2 == 0
                 ), f"`split={datasets_split_name}` sampling error check plz"
@@ -110,7 +111,7 @@ def main(parser: HfArgumentParser) -> None:
 
     with predict_args.main_process_first():
         raw_test_datasets = raw_test_datasets.map(preprocess, num_proc=predict_args.num_proc)
-        raw_test_result = filter_and_min_sample(raw_test_datasets, is_split_all=True)
+        raw_test_result = filter_and_min_sample(raw_test_datasets, tokenizer.model_max_length, is_split_all=True)
         test_datasets = raw_test_result["all"]
 
     # [NOTE]: load metrics & set Trainer arguments
@@ -182,13 +183,13 @@ def predict(trainer: Trainer, test_data: Dataset) -> None:
     softmax: np.ndarray = lambda x: np.exp(x) / np.sum(np.exp(x))  # NOTE: 1차원 softmax
     predictions = np.apply_along_axis(softmax, 1, output.predictions)
     # 그렇기 때문에 apply를 이용해 각 열에 적용시켜야 함.
-    bool_pred = predictions.argmax(-1).astype(bool)
+    int_pred = predictions.argmax(-1)
 
     test_data = test_data.remove_columns(["is_impossible", "input_ids", "attention_mask"])
 
-    test_data = test_data.add_column(name="pred", column=bool_pred)
-    test_data = test_data.add_column(name="impossible_prob", column=predictions[:, 0])
-    test_data = test_data.add_column(name="possible_prob", column=predictions[:, 1])
+    test_data = test_data.add_column(name="pred", column=int_pred)
+    test_data = test_data.add_column(name="possible_prob", column=predictions[:, 0])
+    test_data = test_data.add_column(name="impossible_prob", column=predictions[:, 1])
 
     save_path = os.path.join(trainer.args.output_dir, "1-predict_result.json")
     test_data.to_json(save_path, force_ascii=False)
